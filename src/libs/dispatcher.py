@@ -72,10 +72,12 @@ class Dispatcher:
                     if self.dispatcher_config.telegram_enable:
                         await self.__put_in_queue__(self.queue_telegram,
                                                     item)
-
                     if self.dispatcher_config.email_enable:
                         await self.__put_in_queue__(self.queue_mail,
                                                     item)
+                    if (not self.dispatcher_config.telegram_enable and
+                            not self.dispatcher_config.email_enable):
+                        self.print_helper.info(f"send_to_std_out[Disable send...only std out]=\n{item}")
 
         except Exception as err:
             self.print_helper.error_and_exception(f"run", err)

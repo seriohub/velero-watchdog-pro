@@ -63,14 +63,15 @@ class VeleroChecker:
         await queue.put(obj)
 
     @handle_exceptions_async_method
-    async def send_to_dispatcher(self, message):
+    async def send_to_dispatcher(self, message, force_message=False):
         """
         Send message to dispatcher engine
         @param message: message to send
+        @param force_message: if true, put the message into the queue
         """
         self.print_helper.info(f"send_to_dispatcher. msg len= {len(message)}-unique {self.unique_message} ")
         if len(message) > 0:
-            if not self.unique_message:
+            if not self.unique_message or force_message:
                 self.last_send = calendar.timegm(datetime.today().timetuple())
                 await self.__put_in_queue__(self.dispatcher_queue,
                                             message)
@@ -92,7 +93,8 @@ class VeleroChecker:
         self.print_helper.info(f"send_to_dispatcher_summary. message-len= {len(self.final_message)}")
         # Chck if the final message is not empty
         if len(self.final_message) > 10:
-            self.final_message = f"Start report\n{self.final_message}\nEnd report"
+            # LS 2023.11.09 add cluster name
+            self.final_message = f"Cluster name: {self.cluster_name}\nStart report\n{self.final_message}\nEnd report"
             self.last_send = calendar.timegm(datetime.today().timetuple())
             await self.__put_in_queue__(self.dispatcher_queue,
                                         self.final_message)
@@ -140,7 +142,7 @@ class VeleroChecker:
                                                   f"\nThis is an alive message"
                                                   f"\nNo warning/errors were triggered in the last "
                                                   f"{int(self.alive_message_seconds / 3600)} "
-                                                  f"hours ")
+                                                  f"hours ", True)
                     self.force_alive_message = False
 
         except Exception as err:
@@ -192,6 +194,24 @@ class VeleroChecker:
             if self.old_backup == data:
                 self.print_helper.info("__last_backup_report. do nothing same data")
                 return
+
+            old_backups = {}
+            old_unscheduled = {}
+
+            if self.old_backup is not None and len(self.old_backup) > 0:
+                old_backups = self.old_backup['backups']
+                old_unscheduled = self.old_backup['us_ns']
+
+            backups_upd = False
+            unscheduled_upd = False
+
+            if backups != old_backups:
+                backups_upd = True
+                self.print_helper.info("__last_backup_report. backup status changed")
+
+            if unscheduled != old_unscheduled:
+                unscheduled_upd = True
+                self.print_helper.info("__last_backup_report. unscheduled namespaces status changed")
 
             message = ''
 
@@ -309,7 +329,12 @@ class VeleroChecker:
                     message = (f'Namespace without active backup [{unscheduled["counter"]}/{unscheduled["counter_all"]}]'
                                f':\n{str_namespace}')
 
-            out_message = f"{message_header}\n{message}"
+            if unscheduled_upd and backups_upd:
+                out_message = f"{message_header}\n{message}"
+            elif unscheduled_upd:
+                out_message = f"{message}"
+            else:
+                out_message = f"{message_header}"
 
             if len(out_message) > 10:
                 await self.send_to_dispatcher(out_message)
@@ -347,6 +372,7 @@ class VeleroChecker:
             if self.old_schedule_status == data:
                 self.print_helper.info("__process_schedule_report. do nothing same data")
                 return
+
             message = ''
             diff = self.find_dict_difference(self.old_schedule_status, data)
 
