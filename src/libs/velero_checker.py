@@ -204,14 +204,31 @@ class VeleroChecker:
 
             backups_upd = False
             unscheduled_upd = False
-
+            # LS 2023.11.17 add source of message
+            difference = ""
             if backups != old_backups:
                 backups_upd = True
                 self.print_helper.info("__last_backup_report. backup status changed")
+                difference = "bck"
+                # print difference
+                if len(old_backups) > 0:
+                    diff = self.find_dict_difference(old_backups, backups)
+                    self.print_helper.info(f'Difference in backups : {diff}')
+                else:
+                    self.print_helper.info("__last_backup_report. backup status changed. no old value set")
 
             if unscheduled != old_unscheduled:
                 unscheduled_upd = True
                 self.print_helper.info("__last_backup_report. unscheduled namespaces status changed")
+                if len(old_unscheduled) > 0:
+                    diff = self.find_dict_difference(old_unscheduled, unscheduled)
+                    self.print_helper.info(f'Difference in schedules : {diff}')
+                else:
+                    self.print_helper.info("__last_backup_report. unscheduled status changed. no old value set")
+                if len(difference) > 0:
+                    difference = f"{difference}-sch"
+                else:
+                    difference = f"{difference}-sch"
 
             message = ''
 
@@ -303,7 +320,8 @@ class VeleroChecker:
                               f'{point} Unscheduled namespaces={unscheduled["counter"]}\n'
                               f'Backups Stats based on last backup for every schedule and backup without schedule'
                               f'\n{point} Total={backup_count}'
-                              f'\n{point} Completed={backup_completed}')
+                              f'\n{point} Completed={backup_completed}'
+                              f'\n{point} Difference={difference}')
 
             if backup_in_progress > 0:
                 message_header += f'\n{point} In Progress={backup_in_progress}{backup_in_progress_str}'
