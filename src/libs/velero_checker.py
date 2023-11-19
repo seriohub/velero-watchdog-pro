@@ -186,11 +186,36 @@ class VeleroChecker:
         else:
             return None
 
+    def __pre_batch_data(self, data):
+        try:
+            self.print_helper.info("_pre_batch_data")
+            if len(data) > 0:
+                for backup_name, backup_info in data['backups'].items():
+                    if len(backup_info['expire']) > 0:
+                        day = self._extract_days_from_str(str(backup_info['expire']))
+                        if day > self.k8s_config.EXPIRES_DAYS_WARNING:
+                            self.print_helper.debug_if(
+                                    self.debug_on,
+                                    f"_pre_batch_data: "
+                                    f"{backup_name}"
+                                    f" expire from {data['backups'][backup_name]['expire']}"
+                                    f" forced to {self.k8s_config.EXPIRES_DAYS_WARNING}d")
+                            data['backups'][backup_name]['expire'] = f"{self.k8s_config.EXPIRES_DAYS_WARNING}d"
+
+            return data
+        except Exception as err:
+            self.print_helper.error_and_exception(f"__pre_batch_data", err)
+            return data
+
     async def __process_last_backup_report(self, data):
         self.print_helper.info("__last_backup_report")
-        backups = data['backups']
-        unscheduled = data['us_ns']
         try:
+            # LS 2023.11.19 pre-batch raw data for avoiding unuseful message
+            data = self.__pre_batch_data(data)
+
+            backups = data['backups']
+            unscheduled = data['us_ns']
+
             if self.old_backup == data:
                 self.print_helper.info("__last_backup_report. do nothing same data")
                 return
@@ -344,8 +369,9 @@ class VeleroChecker:
                 for name_s in unscheduled['difference']:
                     str_namespace += f'\t{name_s}\n'
                 if len(str_namespace) > 0:
-                    message = (f'Namespace without active backup [{unscheduled["counter"]}/{unscheduled["counter_all"]}]'
-                               f':\n{str_namespace}')
+                    message = (
+                        f'Namespace without active backup [{unscheduled["counter"]}/{unscheduled["counter_all"]}]'
+                        f':\n{str_namespace}')
 
             if unscheduled_upd and backups_upd:
                 out_message = f"{message_header}\n{message}"
@@ -358,7 +384,6 @@ class VeleroChecker:
                 await self.send_to_dispatcher(out_message)
 
             self.old_backup = data
-
         except Exception as err:
             # self.print_helper.error(f"consumer error : {err}")
             self.print_helper.error_and_exception(f"__last_backup_report", err)
