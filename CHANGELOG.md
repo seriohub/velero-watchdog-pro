@@ -1,6 +1,11 @@
 # Change Log
 All notable changes to this project will be documented in this file.
 
+## [0.1.3] - 2023-11-26
+**Implemented enhancements:**
+- Add ignored namespace
+
+
 ## [0.1.2] - 2023-11-19
 **Implemented enhancements:**
 - Run a pre-batch data for avoiding unuseful messages/warnings. <br>When the backup expiration data is grater than the thredshold value, force they to thredshold value

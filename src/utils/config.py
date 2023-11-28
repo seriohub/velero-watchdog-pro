@@ -190,6 +190,20 @@ class ConfigProgram:
             res = '20'
         return int(res)
 
+    @handle_exceptions_method
+    def get_regex_patterns_ignore_nm(self):
+        regex_list = []
+
+        for i in range(1, 10):
+            res = self.load_key(f'IGNORE_NM_{i}', None)
+            if res is not None:
+                # Append the regex pattern to the list
+                # regex_list.append(re.compile(res))
+                regex_list.append(res)
+            else:
+                break
+        return regex_list
+
 
 class ConfigK8sProcess:
     def __init__(self, cl_config: ConfigProgram = None):
@@ -209,6 +223,9 @@ class ConfigK8sProcess:
         self.disp_msg_key_start = 'msg_key_start'
         self.disp_msg_key_end = 'msg_key_end'
 
+        # LS 2023.11.23 add ignored namespaces
+        self.ignore_namespace = []
+
         if cl_config is not None:
             self.__init_configuration_app__(cl_config)
 
@@ -222,8 +239,9 @@ class ConfigK8sProcess:
         print(f"INFO    [Process setup] k8s config file={self.k8s_config_file}")
         print(f"INFO    [Process setup] velero backup enable={self.backup_enable}")
         print(f"INFO    [Process setup] velero schedule enable={self.schedule_enable}")
-
         print(f"INFO    [Process setup] k8s send summary message={self.disp_msg_key_unique}")
+
+        print(f"INFO    [Process setup] k8s ignored namespaces: regex defined {len(self.ignore_namespace)}")
 
     def __init_configuration_app__(self, cl_config: ConfigProgram):
         """
@@ -235,6 +253,9 @@ class ConfigK8sProcess:
         self.cluster_name = cl_config.k8s_cluster_identification()
         self.k8s_in_cluster_mode = cl_config.k8s_incluster_mode()
         self.k8s_config_file = cl_config.k8s_config_file()
+
+        # LS 2023.11.23 add ignored namespace
+        self.ignore_namespace = cl_config.get_regex_patterns_ignore_nm()
 
         self.__print_configuration__()
 

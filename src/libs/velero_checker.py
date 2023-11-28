@@ -191,21 +191,31 @@ class VeleroChecker:
             self.print_helper.info("_pre_batch_data")
             if len(data) > 0:
                 for backup_name, backup_info in data['backups'].items():
-                    if len(backup_info['expire']) > 0:
-                        day = self._extract_days_from_str(str(backup_info['expire']))
-                        if day > self.k8s_config.EXPIRES_DAYS_WARNING:
-                            self.print_helper.debug_if(
-                                    self.debug_on,
-                                    f"_pre_batch_data: "
-                                    f"{backup_name}"
-                                    f" expire from {data['backups'][backup_name]['expire']}"
-                                    f" forced to {self.k8s_config.EXPIRES_DAYS_WARNING}d")
-                            data['backups'][backup_name]['expire'] = f"{self.k8s_config.EXPIRES_DAYS_WARNING}d"
+                    if 'expire' in backup_info:
+                        if len(backup_info['expire']) > 0:
+                            day = self._extract_days_from_str(str(backup_info['expire']))
+                            if day > self.k8s_config.EXPIRES_DAYS_WARNING:
+                                self.print_helper.debug_if(
+                                        self.debug_on,
+                                        f"_pre_batch_data: "
+                                        f"{backup_name}"
+                                        f" expire from {data['backups'][backup_name]['expire']}"
+                                        f" forced to {self.k8s_config.EXPIRES_DAYS_WARNING}d")
+                                data['backups'][backup_name]['expire'] = f"{self.k8s_config.EXPIRES_DAYS_WARNING}d"
 
             return data
         except Exception as err:
             self.print_helper.error_and_exception(f"__pre_batch_data", err)
             return data
+
+    def __try_to_parse_to_str(self, value):
+        self.print_helper.info_if(self.debug_on,
+                                  "__last_backup_report")
+        try:
+            return str(value)
+        except Exception as err:
+            self.print_helper.error_and_exception(f"__try_to_parse_to_str", err)
+            return value
 
     async def __process_last_backup_report(self, data):
         self.print_helper.info("__last_backup_report")
@@ -280,64 +290,69 @@ class VeleroChecker:
 
             for backup_name, backup_info in backups.items():
                 self.print_helper.debug_if(self.debug_on, f'Backup schedule: {backup_name}')
+                # self.print_helper.info(f'--->{backup_name}')
+                # LS 2023.11.26 add condition checker
+                if backup_name != "error" or 'schedule' in backup_info:
 
-                #
-                # build current state string
-                #
-                current_state = str(backup_name) + '\n'
 
-                current_state += '\t schedule name=' + str(backup_info['schedule']) + '\n'
+                    #
+                    # build current state string
+                    #
+                    current_state = str(backup_name) + '\n'
+                    # LS 2023.11.26 add
+                    # current_state += '\t schedule name=' + str(backup_info['schedule']) + '\n'
+                    current_state += '\t schedule name=' + self.__try_to_parse_to_str(backup_info['schedule']) + '\n'
 
-                # add end at field
-                if len(backup_info['completion_timestamp']) > 0:
-                    current_state += '\t end at=' + str(backup_info['completion_timestamp']) + '\n'
+                    # add end at field
+                    if len(backup_info['completion_timestamp']) > 0:
+                        current_state += '\t end at=' + str(backup_info['completion_timestamp']) + '\n'
 
-                # add expire field
-                if len(backup_info['expire']) > 0:
-                    current_state += '\t expire=' + str(backup_info['expire'])
+                    # add expire field
+                    if len(backup_info['expire']) > 0:
+                        current_state += '\t expire=' + str(backup_info['expire'])
 
-                    day = self._extract_days_from_str(str(backup_info['expire']))
-                    if day is None:
-                        backup_not_retrieved += 1
-                        current_state += f'**IS NOT VALID{backup_info["expire"]}'
-                    elif day < self.k8s_config.EXPIRES_DAYS_WARNING:
-                        expired_backup += 1
-                        backup_expired_str += f'\n\t{str(backup_name)}'
-                        current_state += '**WARNING'
+                        day = self._extract_days_from_str(str(backup_info['expire']))
+                        if day is None:
+                            backup_not_retrieved += 1
+                            current_state += f'**IS NOT VALID{backup_info["expire"]}'
+                        elif day < self.k8s_config.EXPIRES_DAYS_WARNING:
+                            expired_backup += 1
+                            backup_expired_str += f'\n\t{str(backup_name)}'
+                            current_state += '**WARNING'
+
+                        current_state += '\n'
+
+                    # add status field
+                    if len(backup_info['phase']) > 0:
+                        current_state += '\t status=' + str(backup_info['phase']) + '\n'
+                        if backup_info['phase'].lower() == 'completed':
+                            backup_completed += 1
+                        elif backup_info['phase'].lower() == 'inprogress':
+                            backup_in_progress_str += f'\n\t{str(backup_name)}'
+                            backup_in_progress += 1
+                        elif backup_info['phase'].lower() == 'failed':
+                            backup_failed_str += f'\n\t{str(backup_name)}'
+                            backup_failed += 1
+                        elif backup_info['phase'].lower() == 'partiallyfailed':
+                            backup_partially_failed_str += f'\n\t{str(backup_name)}'
+                            backup_partially_failed += 1
+
+                    # add error field
+                    error = self._get_backup_error_message(str(backup_info['errors']))
+                    if len(error) > 0:
+                        error_str += f'\t{str(backup_name)}'
+                        current_state += '\t' + ' error=' + error + ' '
+                        backup_in_errors += 1
+
+                    # add warning field
+                    wrn = self._get_backup_error_message(str(backup_info['warnings']))
+                    if len(wrn) > 0:
+                        wrn_str += f'\t{str(backup_name)}'
+                        current_state += '\t' + 'warning=' + wrn + '\n'
+                        backup_in_wrn += 1
 
                     current_state += '\n'
-
-                # add status field
-                if len(backup_info['phase']) > 0:
-                    current_state += '\t status=' + str(backup_info['phase']) + '\n'
-                    if backup_info['phase'].lower() == 'completed':
-                        backup_completed += 1
-                    elif backup_info['phase'].lower() == 'inprogress':
-                        backup_in_progress_str += f'\n\t{str(backup_name)}'
-                        backup_in_progress += 1
-                    elif backup_info['phase'].lower() == 'failed':
-                        backup_failed_str += f'\n\t{str(backup_name)}'
-                        backup_failed += 1
-                    elif backup_info['phase'].lower() == 'partiallyfailed':
-                        backup_partially_failed_str += f'\n\t{str(backup_name)}'
-                        backup_partially_failed += 1
-
-                # add error field
-                error = self._get_backup_error_message(str(backup_info['errors']))
-                if len(error) > 0:
-                    error_str += f'\t{str(backup_name)}'
-                    current_state += '\t' + ' error=' + error + ' '
-                    backup_in_errors += 1
-
-                # add warning field
-                wrn = self._get_backup_error_message(str(backup_info['warnings']))
-                if len(wrn) > 0:
-                    wrn_str += f'\t{str(backup_name)}'
-                    current_state += '\t' + 'warning=' + wrn + '\n'
-                    backup_in_wrn += 1
-
-                current_state += '\n'
-                message += current_state
+                    message += current_state
 
             message = f'Backup details [{backup_count}/{unscheduled["counter_all"]}]:\n{message}'
 
@@ -415,7 +430,6 @@ class VeleroChecker:
             if self.old_schedule_status == data:
                 self.print_helper.info("__process_schedule_report. do nothing same data")
                 return
-
             message = ''
             diff = self.find_dict_difference(self.old_schedule_status, data)
 
@@ -433,10 +447,11 @@ class VeleroChecker:
                 if len(diff['old_values']) > 0:
                     message += '\nUpdate scheduled:'
                     for schedule_name in diff['old_values']:
-                        message += "Schedule name:" + schedule_name + "\n"
+                        message += "\nname:" + schedule_name
                         for field in diff['old_values'][schedule_name]:
                             if diff['old_values'][schedule_name][field] != diff['new_values'][schedule_name][field]:
-                                message += f"{field}: {diff['old_values'][schedule_name][field]} -> {diff['new_values'][schedule_name][field]}"
+                                message += (f"\n{field}: from {diff['old_values'][schedule_name][field]} "
+                                            f"to {diff['new_values'][schedule_name][field]}")
 
             await self.send_to_dispatcher(message)
 

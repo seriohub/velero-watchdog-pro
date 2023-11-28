@@ -31,6 +31,9 @@ services:
     - 'BACKUP_ENABLE=True'
     - 'SCHEDULE_ENABLE=True'
     - 'EXPIRES_DAYS_WARNING=29'
+    # IGNORE_NM_1="regex"
+    # IGNORE_NM_2="regex"
+    # IGNORE_NM_3="regex"
 volumes:
   velero_watchdog_vol:
     external: true

@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from kubernetes import client, config
 from collections import OrderedDict
@@ -22,10 +23,42 @@ class VeleroStatus:
             config.load_incluster_config()
         else:
             config.load_kube_config(config_file=k8s_config.k8s_config_file)
-
         self.v1 = client.CoreV1Api()
         self.client = client.CustomObjectsApi()
         self.expires_day_warning = k8s_config.EXPIRES_DAYS_WARNING
+
+        self.ignored_namespace = k8s_config.ignore_namespace
+
+    @handle_exceptions_method
+    def _filter_ignored_namespace(self, keys_list, regex_list):
+        self.print_helper.debug_if(self.debug, '_filter_ignored_namespace...')
+        # Compile regex patterns from the provided list
+        compiled_regex_list = [re.compile(pattern) for pattern in regex_list]
+
+        # Initialize an empty list for the output
+        filtered_keys = []
+        loop = 0
+        # Loop through each key
+        for key in keys_list:
+            loop += 1
+            # Flag to track if the key matches any regex pattern
+            match_found = False
+
+            # Check if the key matches any regex pattern
+            for pattern in compiled_regex_list:
+                if pattern.match(key):
+                    match_found = True
+                    break
+
+            # If no match is found, add the key to the filtered list
+            if not match_found:
+                filtered_keys.append(key)
+            else:
+                self.print_helper.debug_if(self.debug, f'_filter_ignored_namespace discard : {key}')
+
+        self.print_helper.debug_if(self.debug, f'_filter_ignored_namespace: {loop-len(filtered_keys)}')
+
+        return filtered_keys
 
     @handle_exceptions_method
     def _get_k8s_namespace(self):
@@ -36,6 +69,21 @@ class VeleroStatus:
 
         # Extract namespace list
         namespaces = [namespace.metadata.name for namespace in namespace_list.items]
+        all_nm = 0
+        ignored_nm = 0
+        if len(namespaces) > 0:
+            all_nm = len(namespaces)
+        self.print_helper.debug_if(f'_get_namespace_list...=>all:{all_nm}')
+
+        # LS 2023.11.23 add ignored namespace
+        if len(self.ignored_namespace) > 0:
+            namespaces = self._filter_ignored_namespace(namespaces, self.ignored_namespace)
+            ignored_nm = all_nm - len(namespaces)
+        self.print_helper.debug_if(self.debug, f'_get_namespace_list. all nm {all_nm} Ignored {ignored_nm}')
+
+        self.print_helper.info(f"_get_namespace_list all: {all_nm} "
+                               f"after filter: {len(namespaces)} "
+                               f"ignored : {ignored_nm}")
 
         return namespaces
 
@@ -98,6 +146,12 @@ class VeleroStatus:
             else:
                 schedule_name = None
 
+            # print(f'***\n{backup}\n*****\n')
+            # LS 2023.11.26 add namespace
+            nm = ''
+            if 'namespace' in backup:
+                nm = backup['namespace']
+
             if backup['status'] != {}:
                 if 'phase' in backup['status']:
                     phase = backup['status']['phase']
@@ -144,6 +198,7 @@ class VeleroStatus:
                     last_backup_info[backup_name] = {
                         'backup_name': backup_name,
                         'phase': phase,
+                        'namespace': nm,
                         'errors': errors,
                         'warnings': warnings,
                         'time_expires': time_expires,
@@ -166,6 +221,7 @@ class VeleroStatus:
     def _get_unscheduled_namespaces(self):
         namespaces = self._get_k8s_namespace()
         all_included_namespaces = self._get_scheduled_namespaces()
+
         difference = list(set(namespaces) - set(all_included_namespaces))
         difference.sort()
         return difference, len(difference), len(namespaces)

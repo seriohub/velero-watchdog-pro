@@ -1,5 +1,6 @@
+from functools import wraps
 import sys
-import os
+import traceback
 
 
 def handle_exceptions_method(fn):
@@ -10,11 +11,20 @@ def handle_exceptions_method(fn):
         try:
             return fn(self, *args, **kw)
         except Exception as Ex:
+            _, _, tb = sys.exc_info()
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            file_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print("Handle Exceptions:", Ex, "type:", exc_type, "file_name:", file_name, "line no:", exc_tb.tb_lineno)
-            return {'error': fn.__name__,
-                    'ex': Ex}
+            print("E=%s, F=%s, L=%s" % (
+                str(Ex), traceback.extract_tb(exc_tb)[-1][0], traceback.extract_tb(exc_tb)[-1][1]))
+
+            return {'error': {"description": str(Ex),
+                              "file": traceback.extract_tb(exc_tb)[-1][0],
+                              "fn name": fn.__name__,
+                              "line": traceback.extract_tb(exc_tb)[-1][1]
+                              }
+                    }
+        finally:
+            if 'tb' in locals():
+                del tb
 
     return wrapper
 
@@ -27,25 +37,43 @@ def handle_exceptions_static_method(fn):
         try:
             return fn(*args, **kw)
         except Exception as Ex:
-            # exception_handler(self.log)
-            print("Handle Exceptions:", Ex)
-            return {'error': fn.__name__,
-                    'ex': Ex}
+            _, _, tb = sys.exc_info()
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            print("E=%s, F=%s, L=%s" % (
+                str(Ex), traceback.extract_tb(exc_tb)[-1][0], traceback.extract_tb(exc_tb)[-1][1]))
+
+            return {'error': {"description": str(Ex),
+                              "file": traceback.extract_tb(exc_tb)[-1][0],
+                              "fn name": fn.__name__,
+                              "line": traceback.extract_tb(exc_tb)[-1][1]
+                              }
+                    }
+        finally:
+            if 'tb' in locals():
+                del tb
 
     return wrapper
 
 
 def handle_exceptions_async_method(fn):
-    from functools import wraps
-
     @wraps(fn)
     async def wrapper(*args, **kw):
         try:
             return await fn(*args, **kw)
         except Exception as Ex:
-            print("Handle Exceptions:", Ex)
-            return {'error': fn.__name__,
-                    'ex': Ex}
-            # exception_handler(self.log)
+            _, _, tb = sys.exc_info()
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            print("E=%s, F=%s, L=%s" % (
+                str(Ex), traceback.extract_tb(exc_tb)[-1][0], traceback.extract_tb(exc_tb)[-1][1]))
+
+            return {'error': {"description": str(Ex),
+                              "file": traceback.extract_tb(exc_tb)[-1][0],
+                              "fn name": fn.__name__,
+                              "line": traceback.extract_tb(exc_tb)[-1][1]
+                              }
+                    }
+        finally:
+            if 'tb' in locals():
+                del tb
 
     return wrapper
